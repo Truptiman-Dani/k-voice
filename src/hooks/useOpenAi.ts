@@ -1,34 +1,55 @@
-import express from "express";
-import cors from "cors";
+import { useState } from "react";
 import axios from "axios";
-import dotenv from "dotenv";
 
-dotenv.config();
-const app = express();
-app.use(express.json());
-app.use(cors());
+const description = `
+Deepgram is an AI-powered speech-to-text and text-to-speech service. 
+It allows users to transcribe audio in real time and convert text into natural-sounding speech.
 
-app.post("/api/ask", async (req, res) => {
-  const { description, question } = req.body;
+Deepgram's features include:
+- Real-time transcription of audio from various sources (e.g., voice calls, recorded files).
+- Conversion of text into natural-sounding speech using advanced AI algorithms.
+- Integration with various platforms and applications, such as Google Assistant, Amazon Alexa, and Slack.
+`;
 
-  const prompt = `Answer the following question using only the given description. If you can't find the answer, say "I don't know".\n\nDescription: ${description}\n\nQuestion: ${question}\n\nAnswer:`;
+const useOpenAi = () => {
+  const [answer, setAnswer] = useState<string>("");
 
-  try {
-    const response = await axios.post(
-      "https://api.openai.com/v1/chat/completions",
-      {
-        model: "gpt-4-turbo",
-        messages: [{ role: "system", content: prompt }],
-      },
-      {
-        headers: { Authorization: `Bearer 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` },
-      }
-    );
+  const askQuestion = async (question: string) => {
+    const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;  
+    if (!OPENAI_API_KEY) {
+      console.error("❌ OpenAI API key is missing!");
+      return "API key is missing. Please check your .env file.";
+    }
+  
+    try {
+      const response = await axios.post(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: "You are an AI that answers questions based only on the given description." },
+            { role: "user", content: `Description: ${description}\n\nQuestion: ${question}` },
+          ],
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+  
+      const aiAnswer = response.data.choices[0].message.content.trim();
+      setAnswer(aiAnswer);
+      return aiAnswer;
+    } catch (error: any) {
+      console.error("❌ Error fetching response from OpenAI:", error.response?.data || error.message);
+      return "I couldn't process the request.";
+    }
+  };
+  
 
-    res.json({ answer: response.data.choices[0].message.content.trim() });
-  } catch (error) {
-    res.status(500).json({ error: "Error processing question" });
-  }
-});
+  return { answer, askQuestion };
+};
 
-app.listen(5000, () => console.log("Server running on port 5000"));
+export default useOpenAi;

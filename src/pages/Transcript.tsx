@@ -3,6 +3,7 @@ import useDeepgramSTT from "../hooks/useDeepgramSTT";
 
 export default function SpeechRecognitionComponent() {
   const apiKey = "5d6f3d9ba4ac466173a8c9335c466bcf003a045f"; // Replace with your Deepgram API key
+  
   const { transcript, startRecording, stopRecording } = useDeepgramSTT(apiKey);
   const [isRecording, setIsRecording] = useState(false);
 

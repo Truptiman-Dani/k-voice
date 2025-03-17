@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // Load Deepgram API Key from environment variables
-const DEEPGRAM_API_KEY ="5d6f3d9ba4ac466173a8c9335c466bcf003a045f";
+const DEEPGRAM_API_KEY =process.env.REACT_APP_DEEPGRAM_API_KEY;
 
 export class DeepgramSTT {
   private ws: WebSocket | null = null;

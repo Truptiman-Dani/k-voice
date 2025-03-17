@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const OPENAI_API_KEY = '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';
+const OPENAI_API_KEY = process.env.REACT_APP_OPENAI_API_KEY;
 
 export const getAgentResponse = async (query: string) => {
   const response = await axios.post(

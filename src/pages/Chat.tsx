@@ -1,159 +1,122 @@
-import React, { useState } from "react";
-import { Button, Container, Typography, Box, Stack } from "@mui/material";
+import React, { useEffect, useState } from "react";
+import { Button, Typography, Box, Stack, Paper } from "@mui/material";
+import useOpenAi from "../hooks/useOpenAi";
 import useDeepgramSTT from "../hooks/useDeepgramSTT";
 import useDeepgramTTS from "../hooks/useDeepgramTTS";
-import Layout from "../components/Layout";
-import axios from "axios";
 
-const QuestionRecognitionComponent: React.FC = () => {
-  const apiKey = "5d6f3d9ba4ac466173a8c9335c466bcf003a045f"; // Secure API Key
-  const { transcript, startRecording, stopRecording } = useDeepgramSTT(apiKey);
-  const { isSpeaking, speakText } = useDeepgramTTS(apiKey);
-  const [isRecording, setIsRecording] = useState(false);
-  const [answer, setAnswer] = useState("");
+const Chat: React.FC = () => {
+    const apiKey: string = process.env.REACT_APP_DEEPGRAM_API_KEY || "";
+    const { askQuestion } = useOpenAi();
+    const { transcript, startRecording, stopRecording } = useDeepgramSTT(apiKey);
+    const { speakText } = useDeepgramTTS(apiKey);
+    
+    const [isRecording, setIsRecording] = useState(false);
+    const [chatStarted, setChatStarted] = useState(false);
+    const [isGreeting, setIsGreeting] = useState(true);
+    const [chatHistory, setChatHistory] = useState<{ question: string; answer: string }[]>([]);
 
-  // ✅ Hardcoded description
-  const description = `The Eiffel Tower is a wrought-iron lattice tower in Paris, France. It was designed by Gustave Eiffel and completed in 1889. The tower stands 330 meters tall and is one of the most visited monuments in the world.`;
+    // Start Chat Function (User must click first)
+    const startChat = () => {
+        setChatStarted(true);
+        setTimeout(() => {
+            const greeting = "Hello! How can I help you today?";
+            speakText(greeting);
+            setChatHistory((prev) => [...prev, { question: "System: ", answer: greeting }]);
+            setIsGreeting(false);
+            setTimeout(startListening, 2000); // Start listening after greeting
+        }, 3000);
+    };
 
-  // Function to process the transcript as a question
-  const fetchAnswer = async (question: string) => {
-    try {
-      const response = await axios.post("/api/ask", { description, question });
-      setAnswer(response.data.answer);
-      speakText(response.data.answer); // Read the answer aloud
-    } catch (error) {
-      console.error("Error fetching answer:", error);
-    }
-  };
+    // Function to start listening for the user's question
+    const startListening = () => {
+        setIsRecording(true);
+        startRecording();
+    };
 
-  const handleToggleRecording = () => {
-    if (isRecording) {
-      stopRecording();
-      setIsRecording(false);
-      if (transcript && transcript !== "🎤 Speak now...") {
-        fetchAnswer(transcript); // Process the question when recording stops
-      }
-    } else {
-      startRecording();
-      setIsRecording(true);
-    }
-  };
+    // Function to stop recording, ask OpenAI, and restart listening
+    const handleStopListening = async () => {
+        setIsRecording(false);
+        stopRecording();
 
-  return (
-    <Layout>
-      <Box
-        sx={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "linear-gradient(135deg, #4A00E0 30%, #8E2DE2 90%)",
-          color: "white",
-          textAlign: "center",
-          padding: 4,
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
-        {/* Glowing Effect */}
-        <Box
-          sx={{
-            position: "absolute",
-            width: "380px",
-            height: "300px",
-            background: "radial-gradient(circle, rgba(255,255,255,0.3) 10%, rgba(255,255,255,0) 60%)",
-            borderRadius: "50%",
-            top: "20%",
-            left: "40%",
-            filter: "blur(80px)",
-            opacity: 0.6,
-            zIndex: 0,
-          }}
-        />
+        // Wait to ensure transcript updates
+        setTimeout(async () => {
+            if (!transcript.trim()) {
+                startListening(); // Restart if no input
+                return;
+            }
 
-        <Container maxWidth="sm" sx={{ position: "relative", zIndex: 1 }}>
-          <Typography variant="h3" fontWeight="bold" gutterBottom>
-            Ask About the Eiffel Tower!
-          </Typography>
+            const userQuestion = transcript;
+            setChatHistory((prev) => [...prev, { question: `User: ${userQuestion}`, answer: "" }]);
 
-          {/* Hardcoded Description */}
-          <Box
-            sx={{
-              backgroundColor: "rgba(255, 255, 255, 0.2)",
-              backdropFilter: "blur(10px)",
-              borderRadius: "10px",
-              padding: "16px",
-              marginBottom: "16px",
-              color: "white",
-              textAlign: "left",
-              fontSize: "1rem",
-              lineHeight: "1.5",
-            }}
-          >
-            <strong>Description:</strong> {description}
-          </Box>
+            const response = await askQuestion(userQuestion);
+            setChatHistory((prev) =>
+                prev.map((entry) =>
+                    entry.question === `User: ${userQuestion}` ? { ...entry, answer: response } : entry
+                )
+            );
 
-          {/* Transcript Box */}
-          <Box
-            sx={{
-              backgroundColor: "rgba(255, 255, 255, 0.2)",
-              backdropFilter: "blur(10px)",
-              borderRadius: "10px",
-              padding: "16px",
-              minHeight: "100px",
-              maxHeight: "200px",
-              overflowY: "auto",
-              color: "white",
-              textAlign: "left",
-              fontSize: "1.1rem",
-              lineHeight: "1.5",
-            }}
-          >
-            {transcript || "🎤 Speak now..."}
-          </Box>
+            speakText(response);
 
-          {/* Answer Box */}
-          {answer && (
-            <Box
-              sx={{
-                backgroundColor: "rgba(255, 255, 255, 0.2)",
-                backdropFilter: "blur(10px)",
-                borderRadius: "10px",
-                padding: "16px",
-                marginTop: "16px",
-                color: "white",
-                textAlign: "left",
-                fontSize: "1.1rem",
-                lineHeight: "1.5",
-              }}
-            >
-              <strong>Answer:</strong> {answer}
-            </Box>
-          )}
+            // Restart listening after AI finishes speaking
+            setTimeout(startListening, 3000);
+        }, 1000);
+    };
 
-          {/* Start/Stop Button */}
-          <Stack spacing={2} direction="row" justifyContent="center" sx={{ mt: 4 }}>
-            <Button
-              variant="contained"
-              color={isRecording ? "error" : "primary"}
-              onClick={handleToggleRecording}
-              size="large"
-              sx={{
-                padding: "12px 24px",
-                fontSize: "1.1rem",
-                fontWeight: "bold",
-                borderRadius: 2,
-                transition: "0.3s ease",
-                "&:hover": { transform: "scale(1.05)" },
-              }}
-            >
-              {isRecording ? "🛑 Stop Recording" : "🎙 Start Recording"}
-            </Button>
-          </Stack>
-        </Container>
-      </Box>
-    </Layout>
-  );
+    return (
+        <Box sx={{ textAlign: "center", p: 4 }}>
+            <Typography variant="h4">🎤 Voice Chat</Typography>
+
+            {!chatStarted ? (
+                <Button variant="contained" onClick={startChat}>
+                    🚀 Start Chat
+                </Button>
+            ) : (
+                <>
+                    {/* Greeting Message */}
+                    {isGreeting && (
+                        <Typography variant="h6" sx={{ color: "purple", mt: 2 }}>
+                            🗣 Initializing...
+                        </Typography>
+                    )}
+
+                    {/* Recording Indicator */}
+                    {!isGreeting && (
+                        <Typography variant="h6" sx={{ mt: 2, color: isRecording ? "green" : "blue" }}>
+                            {isRecording ? "🎙 Listening..." : "Ready to listen! Ask your question."}
+                        </Typography>
+                    )}
+
+                    {/* Button to manually toggle listening */}
+                    <Stack spacing={2} direction="row" justifyContent="center" sx={{ mt: 3 }}>
+                        <Button
+                            variant="contained"
+                            color={isRecording ? "error" : "primary"}
+                            onClick={isRecording ? handleStopListening : startListening}
+                            disabled={isGreeting}
+                        >
+                            {isRecording ? "🛑 Stop Speaking" : "🎤 Speak"}
+                        </Button>
+                    </Stack>
+
+                    {/* Display Chat History */}
+                    <Box sx={{ mt: 4, maxHeight: "400px", overflowY: "auto" }}>
+                        {chatHistory.map((entry, index) => (
+                            <Paper key={index} sx={{ p: 2, my: 1, textAlign: "left" }}>
+                                <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
+                                    {entry.question}
+                                </Typography>
+                                {entry.answer && (
+                                    <Typography variant="body1" sx={{ mt: 1 }}>
+                                        {entry.answer}
+                                    </Typography>
+                                )}
+                            </Paper>
+                        ))}
+                    </Box>
+                </>
+            )}
+        </Box>
+    );
 };
 
-export default QuestionRecognitionComponent;
+export default Chat;
