@@ -34,40 +34,50 @@ const useDeepgramSTT = (apiKey: string) => {
 
                 socket.send(JSON.stringify(configMessage));
 
-                // 🔴 Send Keep-Alive Pings Every 25 Seconds
+                // 🔴 Fix: Change Keep-Alive Message Format
                 pingIntervalRef.current = setInterval(() => {
                     if (socket.readyState === WebSocket.OPEN) {
-                        socket.send(JSON.stringify({ type: "keep-alive" }));
-                        console.log("🔄 Sent Keep-Alive Ping");
+                        console.log("🔄 Sending Keep-Alive Ping");
+                        socket.send(JSON.stringify({ "type": "KeepAlive" })); // Capitalized "KeepAlive"
                     }
                 }, 10000);
             };
 
+
+            let transcriptBuffer = "";
+
             socket.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
-                    console.log("📜 Received Data:", data);
 
-                    const newTranscript = data.channel?.alternatives[0]?.transcript;
-                    const isFinal = data.is_final;
+                    if (data.type === "Results") {
+                        const newTranscript = data.channel?.alternatives[0]?.transcript;
+                        const isFinal = data.is_final;
 
-                    if (newTranscript) {
-                        setTranscript((prev) => (isFinal ? prev + " " + newTranscript : prev));
+                        if (newTranscript) {
+                            transcriptBuffer += " " + newTranscript; // Collect full sentence
+
+                            if (isFinal) {
+                                setTranscript(transcriptBuffer.trim());
+                                console.log("📝 Finalized Sentence:", transcriptBuffer.trim());
+                                transcriptBuffer = ""; // Clear buffer after sending
+                            }
+                        }
                     }
                 } catch (error) {
-                    console.error("❌ Error parsing message:", error);
+                    console.error("❌ Error parsing Deepgram response:", error);
                 }
             };
 
             socket.onclose = (event) => {
                 console.warn(`⚠️ WebSocket closed (Code: ${event.code}, Reason: ${event.reason})`);
-                cleanupWebSocket();
 
                 if (event.code !== 1000) {
                     console.log("🔄 Reconnecting WebSocket in 3 seconds...");
-                    reconnectTimeoutRef.current = setTimeout(connectWebSocket, 2000);
+                    reconnectTimeoutRef.current = setTimeout(connectWebSocket, 1000);
                 }
             };
+
 
             socket.onerror = (error) => {
                 console.error("❌ WebSocket Error:", error);
@@ -110,10 +120,18 @@ const useDeepgramSTT = (apiKey: string) => {
 
         mediaRecorder.ondataavailable = (event) => {
             console.log("🎤 Sending audio data:", event.data);
-            if (socketRef.current?.readyState === WebSocket.OPEN) {
-                socketRef.current.send(event.data);
+
+            if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+                console.warn("🚨 WebSocket not open! Reconnecting...");
+                connectWebSocket();
+                setTimeout(startRecording, 1000);
+                return;
             }
+
+            socketRef.current.send(event.data);
+            console.log("✅ Audio data sent successfully!");
         };
+
 
         mediaRecorder.start(500); // Send audio every 500ms
     };
